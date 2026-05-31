@@ -1,36 +1,117 @@
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, Alert, ActivityIndicator, Image, KeyboardAvoidingView, Platform } from 'react-native';
-import { useState } from 'react';
+import { 
+  View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, 
+  Alert, ActivityIndicator, Image, KeyboardAvoidingView, Platform,
+  Modal, ActionSheetIOS 
+} from 'react-native';
+import { useState, useEffect } from 'react';
 import * as ImagePicker from 'expo-image-picker';
 import { api } from '../../service/api';
 import { customAlert } from '../../utils/alerthelper';
+import { Ionicons } from '@expo/vector-icons';
+
+// KOMPONEN INPUT GAYA BARU (Sama persis kayak di Add Menu)
+const MenuInput = ({ 
+  iconName, placeholder, value, onChangeText, 
+  keyboardType, autoCapitalize, multiline
+}) => {
+  const [isFocused, setIsFocused] = useState(false);
+  const iconColor = isFocused ? '#1565C0' : '#888';
+  const borderBottomColor = isFocused ? '#1565C0' : '#E8ECF0';
+
+  return (
+    <View style={styles.inputRow}>
+      <View style={[styles.iconContainer, multiline && { paddingTop: 14, justifyContent: 'flex-start' }]}>
+        <Ionicons name={iconName} size={22} color={iconColor} />
+      </View>
+      <View style={[styles.textInputWrapper, { borderBottomColor }, multiline && { borderBottomWidth: 1 }]}>
+        <TextInput
+          style={[styles.textInputStyle, multiline && styles.multilineStyle]}
+          placeholder={placeholder}
+          placeholderTextColor="#aaa"
+          value={value}
+          onChangeText={onChangeText}
+          keyboardType={keyboardType}
+          autoCapitalize={autoCapitalize}
+          onFocus={() => setIsFocused(true)}
+          onBlur={() => setIsFocused(false)}
+          multiline={multiline}
+          autoComplete="off"
+          textContentType="none"
+          autoCorrect={false}
+        />
+      </View>
+    </View>
+  );
+};
 
 export default function VendorEditMenuScreen({ route, navigation }) {
-  // Tangkap data menu yang dilempar dari layar Kelola Menu
+  // Tangkap data menu yang dikirim dari VendorMenuScreen
   const { menu } = route.params;
 
-  // Isi state awal dengan data menu yang sudah ada
-  const [namaMenu, setNamaMenu] = useState(menu.nama);
+  // Isi default state pakai data lama
+  const [namaMenu, setNamaMenu] = useState(menu.nama || '');
+  const [harga, setHarga] = useState(menu.harga ? String(menu.harga) : '');
+  const [stok, setStok] = useState(menu.stok !== undefined ? String(menu.stok) : '0'); 
   const [deskripsi, setDeskripsi] = useState(menu.deskripsi || '');
-  const [harga, setHarga] = useState(menu.harga ? menu.harga.toString() : '');
-  const [kategori, setKategori] = useState(menu.kategori || 'Makanan');
-  const [fotoMenu, setFotoMenu] = useState(menu.foto_url);
+  
+  const [fotoMenu, setFotoMenu] = useState(menu.foto_url || null);
   const [loading, setLoading] = useState(false);
+  
+  const [modalVisible, setModalVisible] = useState(false);
 
-  const pickImage = async () => {
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+  // Logika Jeda Pintar!
+  const showImageOptions = (isFromModal = false) => {
+    const openMenu = () => {
+      if (Platform.OS === 'ios') {
+        ActionSheetIOS.showActionSheetWithOptions(
+          {
+            title: 'Upload Foto Menu',
+            options: ['Buka Kamera', 'Dari Galeri', 'Batal'],
+            cancelButtonIndex: 2,
+          },
+          (btnIndex) => {
+            if (btnIndex === 0) launchImage(true);
+            else if (btnIndex === 1) launchImage(false);
+          }
+        );
+      } else {
+        Alert.alert("Upload Foto Menu", "Pilih sumber foto", [
+          { text: 'Buka Kamera', onPress: () => launchImage(true) },
+          { text: 'Dari Galeri', onPress: () => launchImage(false) },
+        ], { cancelable: true });
+      }
+    };
+
+    if (isFromModal) {
+      setModalVisible(false);
+      setTimeout(openMenu, 500); 
+    } else {
+      openMenu(); 
+    }
+  };
+
+  const launchImage = async (useCamera) => {
+    const perm = useCamera 
+      ? await ImagePicker.requestCameraPermissionsAsync() 
+      : await ImagePicker.requestMediaLibraryPermissionsAsync();
+
     if (!perm.granted) { 
-      customAlert('Izin diperlukan', 'Izinkan akses galeri untuk ubah foto menu.');
+      customAlert('Izin diperlukan', 'Akses dibutuhkan untuk mengambil foto.');
       return; 
     }
 
     try {
-      const result = await ImagePicker.launchImageLibraryAsync({
+      const options = {
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
-        aspect: [1, 1],
+        aspect: [1, 1], 
         quality: 0.3,
         base64: true
-      });
+      };
+
+      const result = useCamera 
+        ? await ImagePicker.launchCameraAsync(options) 
+        : await ImagePicker.launchImageLibraryAsync(options);
 
       if (!result.canceled) {
         setFotoMenu(`data:image/jpeg;base64,${result.assets[0].base64}`);
@@ -40,30 +121,31 @@ export default function VendorEditMenuScreen({ route, navigation }) {
     }
   };
 
-  const handleUpdateMenu = async () => {
-    if (!namaMenu || !harga) {
-      customAlert('Oops!', 'Nama menu dan harga wajib diisi ya!');
+  const handleSimpanMenu = async () => {
+    if (!namaMenu.trim() || !harga.trim() || !stok.trim()) {
+      customAlert('Oops!', 'Nama menu, harga, dan stok wajib diisi ya!');
       return;
     }
 
     setLoading(true);
     try {
-      // Nembak API PUT ke /menu/:id
+      // Panggil API PUT /menu/:id untuk update
       await api.put(`/menu/${menu._id}`, {
-        nama: namaMenu,
-        deskripsi: deskripsi,
+        nama: namaMenu.trim(),
+        deskripsi: deskripsi.trim(),
         harga: Number(harga),
-        kategori: kategori,
+        stok: Number(stok),
         foto_url: fotoMenu
       });
 
-      customAlert('Berhasil! ✨', 'Data menu berhasil diperbarui.', [
+      customAlert('Berhasil!', 'Menu sudah berhasil diperbarui', [
         { text: 'OK', onPress: () => navigation.goBack() }
       ]);
+      
     } catch (error) {
       console.log("❌ ERROR UPDATE MENU:", error.response ? error.response.data : error.message);
-      const errorMsg = error.response?.data?.message || 'Gagal update menu. Cek koneksi servermu.';
-      customAlert('Gagal Update', errorMsg);
+      const errorMsg = error.response?.data?.message || 'Gagal menyimpan menu. Cek koneksi servermu.';
+      customAlert('Gagal Menyimpan', errorMsg);
     } finally {
       setLoading(false);
     }
@@ -71,97 +153,143 @@ export default function VendorEditMenuScreen({ route, navigation }) {
 
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-      <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+      <View style={styles.container}>
         
+        {/* Header */}
         <View style={styles.header}>
-          <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
-            <Text style={styles.backBtnText}>← Batal</Text>
+          <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+            <Text style={styles.backIcon}>‹</Text>
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Edit Menu</Text>
         </View>
 
-        <View style={styles.form}>
-          <View style={styles.inputWrapper}>
-            <Text style={styles.label}>Foto Menu</Text>
-            <TouchableOpacity style={styles.uploadBox} onPress={pickImage} activeOpacity={0.8}>
-              {fotoMenu ? (
-                <Image source={{ uri: fotoMenu }} style={styles.previewImage} resizeMode="cover" />
-              ) : (
-                <>
-                  <Text style={styles.uploadIcon}>📸</Text>
-                  <Text style={styles.uploadText}>Tap untuk upload foto</Text>
-                </>
-              )}
-            </TouchableOpacity>
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+          
+          <Text style={styles.formSectionHeading}>Informasi Menu</Text>
+          <View style={styles.formSectionFields}>
+            
+            <MenuInput iconName="fast-food-outline" placeholder="Nama Menu" value={namaMenu} onChangeText={setNamaMenu} />
+            <MenuInput iconName="pricetag-outline" placeholder="Harga Menu" value={harga} onChangeText={setHarga} keyboardType="numeric" />
+            <MenuInput iconName="cube-outline" placeholder="Jumlah Stok Menu" value={stok} onChangeText={setStok} keyboardType="numeric" />
+            <MenuInput iconName="document-text-outline" placeholder="Deskripsi Menu (Opsional)" value={deskripsi} onChangeText={setDeskripsi} />
+          
           </View>
 
-          <View style={styles.inputWrapper}>
-            <Text style={styles.label}>Nama Menu</Text>
-            <TextInput style={styles.input} value={namaMenu} onChangeText={setNamaMenu} />
-          </View>
-
-          <View style={styles.inputWrapper}>
-            <Text style={styles.label}>Harga (Rp)</Text>
-            <TextInput style={styles.input} keyboardType="number-pad" value={harga} onChangeText={setHarga} />
-          </View>
-
-          <View style={styles.inputWrapper}>
-            <Text style={styles.label}>Kategori</Text>
-            <View style={styles.kategoriRow}>
-              {['Makanan', 'Minuman', 'Snack'].map((kat) => (
+          {/* FOTO MENU */}
+          <Text style={[styles.formSectionHeading, { marginTop: 16 }]}>Foto Menu</Text>
+          <View style={styles.formSectionFields}>
+            <View style={styles.fotoSection}>
+              <View style={styles.iconContainer}><Ionicons name="image-outline" size={22} color="#888" /></View>
+              <View style={styles.fotoContent}>
+                
                 <TouchableOpacity 
-                  key={kat} 
-                  style={[styles.kategoriChip, kategori === kat && styles.kategoriChipActive]} 
-                  onPress={() => setKategori(kat)}
+                  style={[styles.fotoBox, fotoMenu && styles.fotoBoxSolid]} 
+                  onPress={() => fotoMenu ? setModalVisible(true) : showImageOptions(false)} 
+                  activeOpacity={0.8}
                 >
-                  <Text style={[styles.kategoriText, kategori === kat && styles.kategoriTextActive]}>{kat}</Text>
+                  {fotoMenu ? (
+                    <Image source={{ uri: fotoMenu }} style={styles.fotoPreview} resizeMode="cover" />
+                  ) : (
+                    <View style={styles.fotoPlaceholder}>
+                      <Ionicons name="cloud-upload-outline" size={32} color="#1565C0" />
+                      <Text style={styles.fotoLabel}>Upload Foto Menu</Text>
+                    </View>
+                  )}
                 </TouchableOpacity>
-              ))}
+
+                {fotoMenu && (
+                  <View style={styles.fotoActionRow}>
+                    <TouchableOpacity onPress={() => showImageOptions(false)}>
+                      <Text style={styles.fotoActionText}>Ubah Foto</Text>
+                    </TouchableOpacity>
+                    <Text style={styles.fotoActionSeparator}>|</Text>
+                    <TouchableOpacity onPress={() => setFotoMenu(null)}>
+                      <Text style={[styles.fotoActionText, { color: '#D32F2F' }]}>Hapus</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+
+              </View>
             </View>
           </View>
 
-          <View style={styles.inputWrapper}>
-            <Text style={styles.label}>Deskripsi (Opsional)</Text>
-            <TextInput 
-              style={[styles.input, styles.inputArea]} 
-              multiline 
-              numberOfLines={3}
-              value={deskripsi} 
-              onChangeText={setDeskripsi} 
-            />
-          </View>
+          <View style={{ height: 40 }} />
+        </ScrollView>
 
-          <TouchableOpacity style={styles.btnSimpan} onPress={handleUpdateMenu} disabled={loading}>
+        <View style={styles.bottomArea}>
+          <TouchableOpacity 
+            style={[styles.btnSimpan, loading && styles.btnSimpanDisabled]} 
+            onPress={handleSimpanMenu} 
+            disabled={loading}
+            activeOpacity={0.8}
+          >
             {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnSimpanText}>Simpan Perubahan</Text>}
           </TouchableOpacity>
         </View>
 
-      </ScrollView>
+      </View>
+
+      {/* MODAL FOTO DETAIL */}
+      <Modal visible={modalVisible} transparent={true} animationType="fade" onRequestClose={() => setModalVisible(false)}>
+        <View style={styles.modalBackground}>
+          <TouchableOpacity style={styles.modalCloseArea} onPress={() => setModalVisible(false)} activeOpacity={1} />
+          <View style={styles.modalContent}>
+            {fotoMenu && (
+              <View style={styles.fullImageWrapper}>
+                <Image source={{ uri: fotoMenu }} style={styles.fullImage} resizeMode="contain" />
+              </View>
+            )}
+            <TouchableOpacity onPress={() => showImageOptions(true)} activeOpacity={0.7} style={{ padding: 10 }}>
+              <Text style={styles.modalUbahFotoText}>Ubah Foto Menu</Text>
+            </TouchableOpacity>
+          </View>
+          <TouchableOpacity style={styles.modalCloseArea} onPress={() => setModalVisible(false)} activeOpacity={1} />
+        </View>
+      </Modal>
+
     </KeyboardAvoidingView>
   );
 }
 
-// Stylenya 100% sama persis kayak VendorAddMenuScreen
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F5F7FA' },
-  header: { backgroundColor: '#fff', padding: 20, paddingTop: 50, paddingBottom: 15, flexDirection: 'row', alignItems: 'center', borderBottomWidth: 1, borderBottomColor: '#E8ECF0' },
-  backBtn: { marginRight: 15 },
-  backBtnText: { fontSize: 15, color: '#1565C0', fontWeight: '600' },
-  headerTitle: { fontSize: 18, fontWeight: 'bold', color: '#1a1a1a' },
-  form: { padding: 20 },
-  inputWrapper: { marginBottom: 20 },
-  label: { fontSize: 13, fontWeight: '600', color: '#444', marginBottom: 8 },
-  input: { backgroundColor: '#fff', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 14, fontSize: 14, color: '#1a1a1a', borderWidth: 1, borderColor: '#E8ECF0' },
-  inputArea: { minHeight: 80, textAlignVertical: 'top' },
-  uploadBox: { backgroundColor: '#fff', borderRadius: 12, height: 160, justifyContent: 'center', alignItems: 'center', borderWidth: 1.5, borderStyle: 'dashed', borderColor: '#1565C0', overflow: 'hidden' },
-  uploadIcon: { fontSize: 32, marginBottom: 8 },
-  uploadText: { fontSize: 13, color: '#1565C0', fontWeight: '500' },
-  previewImage: { width: '100%', height: '100%' },
-  kategoriRow: { flexDirection: 'row', gap: 10 },
-  kategoriChip: { flex: 1, paddingVertical: 12, backgroundColor: '#fff', borderRadius: 10, borderWidth: 1, borderColor: '#E8ECF0', alignItems: 'center' },
-  kategoriChipActive: { backgroundColor: '#1565C0', borderColor: '#1565C0' },
-  kategoriText: { fontSize: 13, fontWeight: '600', color: '#666' },
-  kategoriTextActive: { color: '#fff' },
-  btnSimpan: { backgroundColor: '#1565C0', padding: 16, borderRadius: 12, alignItems: 'center', marginTop: 10, marginBottom: 30 },
-  btnSimpanText: { color: '#fff', fontSize: 16, fontWeight: 'bold' }
+  container: { flex: 1, backgroundColor: '#FFFFFF' },
+  
+  header: { flexDirection: 'row', alignItems: 'center', paddingTop: 55, paddingBottom: 16, paddingHorizontal: 16, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#F0F0F0' },
+  backButton: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#F5F7FA', justifyContent: 'center', alignItems: 'center', marginRight: 12 },
+  backIcon: { fontSize: 26, color: '#1a1a1a', lineHeight: 30, marginTop: -2 },
+  headerTitle: { fontSize: 24, fontWeight: 'bold', color: '#1a1a1a' },
+  
+  scrollContent: { paddingTop: 20, paddingBottom: 40 },
+  
+  formSectionHeading: { fontSize: 13, fontWeight: '700', color: '#888', textTransform: 'uppercase', letterSpacing: 1, marginLeft: 24, marginTop: 4, marginBottom: 12 },
+  formSectionFields: { paddingHorizontal: 24, marginBottom: 8 },
+  
+  inputRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },
+  iconContainer: { width: 44, justifyContent: 'center', alignItems: 'flex-start', marginTop: 4 }, 
+  textInputWrapper: { flex: 1, flexDirection: 'row', alignItems: 'center', borderBottomWidth: 1, paddingVertical: 14 },
+  textInputStyle: { flex: 1, fontSize: 16, color: '#1a1a1a', padding: 0, margin: 0 },
+  multilineStyle: { minHeight: 60, textAlignVertical: 'top', paddingTop: 4, paddingBottom: 10 },
+
+  fotoSection: { flexDirection: 'row', alignItems: 'flex-start', marginTop: 4 },
+  fotoContent: { flex: 1 },
+  fotoBox: { width: 160, height: 160, backgroundColor: '#F5F7FA', borderRadius: 16, justifyContent: 'center', alignItems: 'center', borderWidth: 1.5, borderStyle: 'dashed', borderColor: '#1565C0', overflow: 'hidden' },
+  fotoBoxSolid: { borderStyle: 'solid', borderColor: '#E8ECF0', borderWidth: 1, backgroundColor: '#fff' }, 
+  fotoPreview: { width: '100%', height: '100%' },
+  fotoPlaceholder: { alignItems: 'center', justifyContent: 'center' },
+  fotoLabel: { fontSize: 12, fontWeight: '600', color: '#1565C0', marginTop: 8 },
+  fotoActionRow: { flexDirection: 'row', alignItems: 'center', marginTop: 10 },
+  fotoActionText: { fontSize: 13, color: '#1565C0', fontWeight: '600' },
+  fotoActionSeparator: { marginHorizontal: 8, color: '#ccc' },
+
+  bottomArea: { padding: 24, paddingBottom: Platform.OS === 'ios' ? 40 : 24, backgroundColor: '#fff', borderTopColor: '#F0F0F0' },
+  btnSimpan: { backgroundColor: '#1565C0', paddingVertical: 16, borderRadius: 100, alignItems: 'center'},
+  btnSimpanDisabled: { backgroundColor: '#A0A0A0', elevation: 0, shadowOpacity: 0 },
+  btnSimpanText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
+
+  modalBackground: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', flexDirection: 'column', justifyContent: 'center' },
+  modalCloseArea: { flex: 1 },
+  modalContent: { alignItems: 'center', paddingVertical: 20 },
+  fullImageWrapper: { width: 320, height: 320, backgroundColor: '#fff', borderRadius: 16, justifyContent: 'center', alignItems: 'center', overflow: 'hidden' },
+  fullImage: { width: '100%', height: '100%' },
+  modalUbahFotoText: { marginTop: 24, fontSize: 15, fontWeight: '700', color: '#fff', textDecorationLine: 'underline' }
 });

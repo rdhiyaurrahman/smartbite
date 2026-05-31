@@ -126,7 +126,7 @@ function VendorTab({ onLogout }) {
       <Tab.Screen name="VendorDashboard" component={VendorDashboardScreen} options={{ tabBarLabel: 'Beranda', tabBarLabelStyle: styles.labelStyle }} />
       <Tab.Screen name="VendorMenu"      component={VendorMenuScreen}      options={{ tabBarLabel: 'Menu', tabBarLabelStyle: styles.labelStyle }} />
       <Tab.Screen name="VendorPesanan"   component={VendorPesananScreen}   options={{ tabBarLabel: 'Pesanan', tabBarLabelStyle: styles.labelStyle }} />
-      <Tab.Screen name="VendorChat"      component={ChatScreen}            options={{ tabBarLabel: 'Pesan', tabBarLabelStyle: styles.labelStyle }} />
+      <Tab.Screen name="VendorChat"      component={ChatScreen}            options={{ tabBarLabel: 'Chat', tabBarLabelStyle: styles.labelStyle }} />
       <Tab.Screen name="VendorProfil" options={{ tabBarLabel: 'Profil', tabBarLabelStyle: styles.labelStyle }}>
         {props => <VendorProfilScreen {...props} onLogout={onLogout} />}
       </Tab.Screen>

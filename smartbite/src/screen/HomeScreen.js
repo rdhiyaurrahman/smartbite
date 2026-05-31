@@ -249,7 +249,7 @@ export default function HomeScreen({ navigation }) {
             })
           )}
         </View>
-
+aya
       </ScrollView>
     </View>
   );

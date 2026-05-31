@@ -225,7 +225,7 @@ export default function RegisterVendorScreen({ navigation }) {
                <Ionicons name="chevron-back" size={26} color="#fff" />
             </TouchableOpacity>
           )}
-          <Text style={styles.illustrationEmoji}>✍️</Text>
+          <Ionicons name="create-outline" size={60} color="#fff" style={{ marginBottom: 12 }} />
           <Text style={styles.appName}>Buat Akun Penjual</Text>
           <Text style={styles.tagline}>Buka toko dan capai lebih banyak pembeli!</Text>
         </LinearGradient>

@@ -84,11 +84,10 @@ export default function VendorDashboardScreen({ navigation }) {
       return;
     }
 
-    // ── Logika Alert Konfirmasi ──
     const actionTitle = newValue ? 'Buka Toko?' : 'Tutup Toko?';
     const actionDesc = newValue 
       ? 'Apakah kamu yakin ingin membuka toko sekarang?' 
-      : 'Menutup toko akan OTOMATIS menyelesaikan pesanan yang diproses, dan menolak pesanan yang belum di-acc. Lanjutkan?';
+      : 'Menutup toko akan otomatis menyelesaikan semua pesanan, Lanjutkan?';
 
     Alert.alert(
       actionTitle,
@@ -105,7 +104,6 @@ export default function VendorDashboardScreen({ navigation }) {
             try {
               await api.put('/toko/vendor/update', { aktif: newValue });
               
-              // 🔥 Auto-refresh dashboard jika toko ditutup biar angka statistik langsung sinkron!
               if (!newValue) {
                 fetchDashboardData();
               }
@@ -139,7 +137,7 @@ export default function VendorDashboardScreen({ navigation }) {
           <View style={styles.headerTop}>
             <View style={{ flex: 1 }}>
               <Text style={styles.headerDate}>{today}</Text>
-              <Text style={styles.headerGreeting}>Hi, {userName}!</Text>
+              <Text style={styles.headerGreeting}>Halo, Kantin {userName}!</Text>
               <Text style={styles.headerKategori}>{toko?.kategori || 'Kategori'}</Text>
             </View>
           </View>
@@ -170,26 +168,26 @@ export default function VendorDashboardScreen({ navigation }) {
           {/* ── Statistik 3 Kolom ── */}
           <View style={styles.statsRow}>
             <TouchableOpacity
-              style={[styles.statCard]}
+              style={styles.statCard}
               onPress={() => navigation.navigate('VendorPesanan')}
               activeOpacity={0.8}
             >
-              <Text style={styles.statIcon}>🛎️</Text>
+              <Ionicons name="notifications-outline" size={24} color="#E65100" style={styles.statIcon} />
               <Text style={[styles.statValue, { color: '#E65100' }]}>{stats.orderAktif || 0}</Text>
               <Text style={styles.statLabel}>Pesanan{'\n'}Aktif</Text>
               {stats.orderAktif > 0 && <View style={styles.alertDot} />}
             </TouchableOpacity>
 
             <View style={styles.statCard}>
-              <Text style={styles.statIcon}>💰</Text>
+              <Ionicons name="cash-outline" size={24} color="#1565C0" style={styles.statIcon} />
               <Text style={styles.statValue}>Rp {((stats.hariIni || 0) / 1000).toFixed(0)}k</Text>
               <Text style={styles.statLabel}>Pemasukan{'\n'}Hari Ini</Text>
             </View>
 
             <View style={styles.statCard}>
-              <Text style={styles.statIcon}>✅</Text>
+              <Ionicons name="checkmark-circle-outline" size={24} color="#2E7D32" style={styles.statIcon} />
               <Text style={styles.statValue}>{stats.selesaiHariIni || 0}</Text>
-              <Text style={styles.statLabel}>Pesanan Selesai{'\n'}Hari Ini</Text>
+              <Text style={styles.statLabel}>Selesai{'\n'}Hari Ini</Text>
             </View>
           </View>
 
@@ -197,9 +195,6 @@ export default function VendorDashboardScreen({ navigation }) {
           <View style={styles.featureCard}>
             <View style={styles.featureHeader}>
               <Text style={styles.featureTitle}>Pintasan Cepat</Text>
-              <TouchableOpacity style={styles.btnLihatSemua} activeOpacity={0.6}>
-                <Text style={styles.textLihatSemua}>Lihat semua</Text>
-              </TouchableOpacity>
             </View>
 
             <View style={styles.shortcutGrid}>
@@ -210,11 +205,19 @@ export default function VendorDashboardScreen({ navigation }) {
                 <Text style={styles.shortcutLabel}>Atur Stok</Text>
               </TouchableOpacity>
 
-              <TouchableOpacity style={styles.shortcutItem} onPress={() => customAlert('Info', 'Fitur Pembayaran Segera Hadir')}>
+              <TouchableOpacity style={styles.shortcutItem} onPress={() => navigation.navigate('VendorProfil', { section: 'pembayaran' })}>
                 <View style={[styles.shortcutIconBg, { backgroundColor: '#E8F5E9' }]}>
                   <Ionicons name="wallet" size={24} color="#2E7D32" />
                 </View>
                 <Text style={styles.shortcutLabel}>Pembayaran</Text>
+              </TouchableOpacity>
+
+              {/* 🔥 Pintasan Kata Pembeli */}
+              <TouchableOpacity style={styles.shortcutItem} onPress={() => customAlert('Info', 'Fitur Kata Pembeli Segera Hadir')}>
+                <View style={[styles.shortcutIconBg, { backgroundColor: '#E3F2FD' }]}>
+                  <Ionicons name="chatbubble" size={24} color="#1565C0" />
+                </View>
+                <Text style={styles.shortcutLabel}>Kata Pembeli</Text>
               </TouchableOpacity>
 
               <TouchableOpacity style={styles.shortcutItem} onPress={() => customAlert('Info', 'Fitur Laporan Segera Hadir')}>
@@ -222,13 +225,6 @@ export default function VendorDashboardScreen({ navigation }) {
                   <Ionicons name="stats-chart" size={24} color="#C62828" />
                 </View>
                 <Text style={styles.shortcutLabel}>Laporan</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity style={styles.shortcutItem} onPress={() => customAlert('Info', 'Fitur Bantuan Segera Hadir')}>
-                <View style={[styles.shortcutIconBg, { backgroundColor: '#E3F2FD' }]}>
-                  <Ionicons name="help-circle" size={24} color="#1565C0" />
-                </View>
-                <Text style={styles.shortcutLabel}>Bantuan</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -264,7 +260,11 @@ export default function VendorDashboardScreen({ navigation }) {
                   <View style={styles.orderLeft}>
                     <Text style={styles.orderId}>{order.kode_pickup || `#${String(order._id || order.id).slice(-6).toUpperCase()}`}</Text>
                     <Text style={styles.orderItems} numberOfLines={1}>{itemsSummary}</Text>
-                    <Text style={styles.orderTime}>🕐 {orderTime}</Text>
+                    
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                       <Ionicons name="time-outline" size={15} color="#aaa" />
+                       <Text style={styles.orderTime}>{orderTime}</Text>
+                    </View>
                   </View>
                   <View style={styles.orderRight}>
                     <View style={[styles.statusBadge, { backgroundColor: s.bg }]}>
@@ -286,14 +286,12 @@ export default function VendorDashboardScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F5F7FA' },
 
-  // ── Header ──
   header: { paddingTop: 58, paddingHorizontal: 20, paddingBottom: 32 },
   headerTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 },
   headerDate: { fontSize: 12, fontWeight: '600', color: 'rgba(255,255,255,0.8)', marginBottom: 5 },
   headerGreeting: { fontSize: 24, fontWeight: 'bold', color: '#fff', marginBottom: 3 },
   headerKategori: { fontSize: 14, color: 'rgba(255,255,255,0.75)' },
 
-  // Toggle card
   toggleCard: {
     backgroundColor: 'rgba(255,255,255,0.15)',
     borderRadius: 14, paddingHorizontal: 16, paddingVertical: 12,
@@ -304,21 +302,19 @@ const styles = StyleSheet.create({
   toggleLabel: { fontSize: 14, fontWeight: '700', color: '#fff' },
   toggleSub: { fontSize: 11, color: 'rgba(255,255,255,0.8)', marginTop: 2 },
 
-  // ── Body ──
   bodyContainer: {
     backgroundColor: '#F5F7FA',
     borderTopLeftRadius: 24, borderTopRightRadius: 24,
     marginTop: -20, padding: 20,
   },
 
-  // Stats
   statsRow: { flexDirection: 'row', gap: 10, marginBottom: 20 },
   statCard: {
     flex: 1, backgroundColor: '#fff', borderRadius: 16, padding: 14,
     alignItems: 'center', position: 'relative',
     elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 4,
   },
-  statIcon: { fontSize: 22, marginBottom: 6 },
+  statIcon: { marginBottom: 6 },
   statValue: { fontSize: 15, fontWeight: 'bold', color: '#1A1A1A', marginBottom: 4, textAlign: 'center' },
   statLabel: { fontSize: 10, color: '#888', fontWeight: '500', textAlign: 'center', lineHeight: 14 },
   alertDot: {
@@ -326,70 +322,22 @@ const styles = StyleSheet.create({
     width: 8, height: 8, borderRadius: 4, backgroundColor: '#E65100',
   },
 
-  // ── Pintasan Cepat (Card Style) ──
   featureCard: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 24,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
+    backgroundColor: '#fff', borderRadius: 16, padding: 16, marginBottom: 24,
+    elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 4,
   },
-  featureHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  featureTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#1A1A1A',
-  },
-  btnLihatSemua: {
-    paddingHorizontal: 12,
-    paddingVertical: 5,
-    borderRadius: 20,
-    borderWidth: 1.2,
-    borderColor: '#2E7D32',
-  },
-  textLihatSemua: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#2E7D32',
-  },
-  shortcutGrid: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-  },
-  shortcutItem: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  shortcutIconBg: {
-    width: 48, height: 48, borderRadius: 16,
-    justifyContent: 'center', alignItems: 'center', marginBottom: 8,
-  },
-  shortcutLabel: { 
-    fontSize: 11, 
-    fontWeight: '600', 
-    color: '#444', 
-    textAlign: 'center' 
-  },
+  featureHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
+  featureTitle: { fontSize: 16, fontWeight: 'bold', color: '#1A1A1A' },
+  shortcutGrid: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  shortcutItem: { flex: 1, alignItems: 'center' },
+  shortcutIconBg: { width: 48, height: 48, borderRadius: 16, justifyContent: 'center', alignItems: 'center', marginBottom: 8 },
+  shortcutLabel: { fontSize: 11, fontWeight: '600', color: '#444', textAlign: 'center' },
 
-  // Pesanan terbaru
   sectionRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
   sectionTitle: { fontSize: 16, fontWeight: 'bold', color: '#1A1A1A' },
   seeAll: { fontSize: 13, color: '#1565C0', fontWeight: '600' },
   
-  emptyOrderContainer: {
-    padding: 20, alignItems: 'center', justifyContent: 'center',
-    backgroundColor: '#fff', borderRadius: 14, borderStyle: 'dashed', borderWidth: 1, borderColor: '#ccc'
-  },
+  emptyOrderContainer: { padding: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff', borderRadius: 14, borderStyle: 'dashed', borderWidth: 1, borderColor: '#ccc' },
   emptyOrderText: { color: '#888', fontSize: 13 },
 
   orderCard: {
