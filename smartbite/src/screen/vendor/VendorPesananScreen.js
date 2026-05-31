@@ -1,31 +1,36 @@
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useState, useCallback } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import { customAlert } from '../../utils/alerthelper';
 import { api } from '../../service/api';
+import { Ionicons } from '@expo/vector-icons';
 
 const TABS = [
-  { id: 'menunggu', label: 'Menunggu', emoji: '🔔' },
-  { id: 'diproses', label: 'Diproses', emoji: '👨‍🍳' },
-  { id: 'siap',     label: 'Siap',     emoji: '✅' },
-  { id: 'selesai',  label: 'Selesai',  emoji: '🕐' },
-  { id: 'ditolak',  label: 'Ditolak',  emoji: '❌' },
+  { id: 'menunggu', label: 'Menunggu' },
+  { id: 'diproses', label: 'Diproses' },
+  { id: 'siap',     label: 'Siap' },
+  { id: 'selesai',  label: 'Selesai' },
+  { id: 'ditolak',  label: 'Ditolak' },
 ];
+
+const TAB_COLORS = {
+  menunggu: '#F57F17',
+  diproses: '#1565C0',
+  siap:     '#2E7D32',
+  selesai:  '#888888',
+  ditolak:  '#C62828' 
+};
 
 export default function VendorPesananScreen({ navigation }) {
   const [activeTab, setActiveTab] = useState('menunggu');
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // ── Tarik Data Pesanan dari MongoDB ──
   const fetchOrders = async () => {
     try {
-      // 1. Ambil ID Toko vendor yang sedang login
       const tokoRes = await api.get('/toko/vendor/mytoko');
       const tokoId = tokoRes.data._id;
 
-      // 2. Ambil semua pesanan untuk toko tersebut
       const orderRes = await api.get(`/orders/vendor/${tokoId}`);
       setOrders(orderRes.data);
     } catch (error) {
@@ -38,7 +43,6 @@ export default function VendorPesananScreen({ navigation }) {
   useFocusEffect(
     useCallback(() => {
       fetchOrders();
-      // Auto-refresh tiap 3 detik biar pesanan baru langsung masuk
       const intervalId = setInterval(fetchOrders, 3000);
       return () => clearInterval(intervalId);
     }, [])
@@ -47,17 +51,15 @@ export default function VendorPesananScreen({ navigation }) {
   const filtered = orders.filter(o => o.status === activeTab);
   const counts = Object.fromEntries(TABS.map(t => [t.id, orders.filter(o => o.status === t.id).length]));
 
-  // ── Fungsi Update Status ke Backend ──
   const updateStatus = async (id, newStatus) => {
-    // Ubah di layar duluan biar terasa cepat (Optimistic Update)
     setOrders(prev => prev.map(o => (o._id || o.id) === id ? { ...o, status: newStatus } : o));
     
     try {
       await api.put(`/orders/${id}/status`, { status: newStatus });
-      setActiveTab(newStatus); // Otomatis pindah tab ke status yang baru
+      setActiveTab(newStatus); 
     } catch (error) {
       Alert.alert('Gagal', 'Tidak dapat mengupdate status pesanan.');
-      fetchOrders(); // Kembalikan ke posisi semula jika API gagal
+      fetchOrders(); 
     }
   };
 
@@ -89,17 +91,43 @@ export default function VendorPesananScreen({ navigation }) {
     ]);
   };
 
+  // 🔥 FUNGSI NOTIFIKASI REAL-TIME KE BACKEND
+  const sendNotification = async (orderId, minutes) => {
+    try {
+      // 1. Tembak API Notifikasi (Harus dibuat di Node.js pakai Socket.io / Expo Push)
+      await api.post(`/orders/${orderId}/notify`, { 
+        title: "Pesanan Diproses! 👨‍🍳",
+        message: `Toko sedang menyiapkan makananmu. Kira-kira siap dalam ${minutes} menit lagi!` 
+      });
+      
+      customAlert('Terkirim!', `Customer sudah diberitahu pesanan siap dalam ${minutes} menit.`);
+    } catch (error) {
+      console.log("Error send notif:", error);
+      // Kalau endpointnya belum dibikin di backend, kita munculin alert ini dulu
+      customAlert('Sedang Dikembangkan', `Simulasi sukses! (Endpoint /orders/${orderId}/notify belum ada di backend).`);
+    }
+  };
+
   const handleNotifCustomer = (id) => {
     customAlert(
-      '🔔 Kirim Notifikasi',
+      'Kirim Notifikasi',
       'Pilih estimasi waktu untuk dikirim ke customer:',
       [
-        { text: '⏱ Siap dalam 10 menit', onPress: () => customAlert('Terkirim! ✅', 'Customer sudah diberitahu pesanan siap dalam 10 menit.') },
-        { text: '⏱ Siap dalam 5 menit',  onPress: () => customAlert('Terkirim! ✅', 'Customer sudah diberitahu pesanan siap dalam 5 menit.') },
-        { text: '⏱ Siap dalam 2 menit',  onPress: () => customAlert('Terkirim! ✅', 'Customer sudah diberitahu pesanan siap dalam 2 menit.') },
+        { text: '10 menit', onPress: () => sendNotification(id, 10) },
+        { text: '5 menit',  onPress: () => sendNotification(id, 5) },
+        { text: '2 menit',  onPress: () => sendNotification(id, 2) },
         { text: 'Batal', style: 'cancel' },
       ]
     );
+  };
+
+  const handleChatPembeli = (order) => {
+    navigation.navigate('RoomChat', {
+      tokoId: order.toko_id, 
+      tokoNama: order.customer_id.nama, 
+      customerId: order.customer_id._id, 
+      isVendor: true 
+    });
   };
 
   return (
@@ -111,20 +139,37 @@ export default function VendorPesananScreen({ navigation }) {
         <Text style={styles.headerSub}>Kelola semua pesanan tokomu</Text>
       </View>
 
-      {/* Tab Bar */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabScroll} contentContainerStyle={styles.tabContainer}>
-        {TABS.map((tab) => (
-          <TouchableOpacity key={tab.id} style={[styles.tab, activeTab === tab.id && styles.tabActive]} onPress={() => setActiveTab(tab.id)} activeOpacity={0.7}>
-            <Text style={styles.tabEmoji}>{tab.emoji}</Text>
-            <Text style={[styles.tabLabel, activeTab === tab.id && styles.tabLabelActive]}>{tab.label}</Text>
-            {counts[tab.id] > 0 && (
-              <View style={[styles.tabBadge, activeTab === tab.id && styles.tabBadgeActive]}>
-                <Text style={[styles.tabBadgeText, activeTab === tab.id && styles.tabBadgeTextActive]}>{counts[tab.id]}</Text>
-              </View>
-            )}
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
+      {/* Tab Bar (Warna Dinamis) */}
+      <View style={styles.topTabBar}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabContainer}>
+          {TABS.map((tab) => {
+            const isActive = activeTab === tab.id;
+            const tabColor = TAB_COLORS[tab.id];
+
+            return (
+              <TouchableOpacity 
+                key={tab.id} 
+                style={[styles.topTabButton, isActive && { borderBottomColor: tabColor }]} 
+                onPress={() => setActiveTab(tab.id)} 
+                activeOpacity={0.8}
+              >
+                <View style={styles.tabContentRow}>
+                  <Text style={[styles.topTabText, isActive && { color: tabColor }]}>
+                    {tab.label}
+                  </Text>
+                  {counts[tab.id] > 0 && (
+                    <View style={[styles.tabBadge, isActive && { backgroundColor: tabColor }]}>
+                      <Text style={[styles.tabBadgeText, isActive && { color: '#fff' }]}>
+                        {counts[tab.id]}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              </TouchableOpacity>
+            )
+          })}
+        </ScrollView>
+      </View>
 
       {/* List */}
       {loading && orders.length === 0 ? (
@@ -133,7 +178,7 @@ export default function VendorPesananScreen({ navigation }) {
         </View>
       ) : filtered.length === 0 ? (
         <View style={styles.emptyContainer}>
-          <Text style={styles.emptyEmoji}>📭</Text>
+          <Ionicons name="receipt-outline" size={70} color="#D0D5DD" style={styles.emptyEmoji} />
           <Text style={styles.emptyTitle}>Tidak ada pesanan</Text>
           <Text style={styles.emptyDesc}>Pesanan "{TABS.find(t => t.id === activeTab)?.label}" akan muncul di sini</Text>
         </View>
@@ -143,28 +188,36 @@ export default function VendorPesananScreen({ navigation }) {
             const orderId = order._id || order.id;
             const waktuOrder = new Date(order.createdAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
             
-            return (
-            <View key={orderId} style={styles.orderCard}>
+            let metodeColor = '#2E7D32'; 
+            if (order.metode_bayar === 'QRIS') metodeColor = '#6A1B9A';
+            else if (order.metode_bayar === 'Transfer Bank') metodeColor = '#1565C0';
 
-              {/* Card Top */}
+            return (
+            <TouchableOpacity 
+              key={orderId} 
+              style={styles.orderCard}
+              activeOpacity={0.9}
+              onPress={() => navigation.navigate('VendorDetailPesanan', { order: order })}
+            >
               <View style={styles.cardTop}>
                 <View style={styles.cardTopLeft}>
-                  {/* Tampilkan Kode Pickup kalau ada, kalau nggak pakai ID */}
                   <Text style={styles.orderId}>{order.kode_pickup || `#${orderId.slice(0,6).toUpperCase()}`}</Text>
-                  <Text style={styles.orderTime}>🕐 {waktuOrder}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                    <Ionicons name="time-outline" size={14} color="#888" />
+                    <Text style={styles.orderTime}>{waktuOrder}</Text>
+                  </View>
                 </View>
+                
                 <View style={[
                   styles.metodeBadge,
                   order.metode_bayar === 'QRIS' && styles.metodeQris,
                   order.metode_bayar === 'Transfer Bank' && styles.metodeTransfer,
                   order.metode_bayar === 'Tunai' && styles.metodeTunai,
                 ]}>
-                  <Text style={[
-                    styles.metodeText,
-                    order.metode_bayar === 'QRIS' && { color: '#6A1B9A' },
-                    order.metode_bayar === 'Transfer Bank' && { color: '#1565C0' },
-                    order.metode_bayar === 'Tunai' && { color: '#2E7D32' },
-                  ]}>💳 {order.metode_bayar}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <Ionicons name="wallet-outline" size={12} color={metodeColor} style={{ marginRight: 4 }} />
+                    <Text style={[styles.metodeText, { color: metodeColor }]}>{order.metode_bayar}</Text>
+                  </View>
                 </View>
               </View>
 
@@ -181,66 +234,95 @@ export default function VendorPesananScreen({ navigation }) {
 
               <View style={styles.divider} />
 
-              {/* Footer */}
               <View style={styles.cardBottom}>
-                <View style={{ flex: 1 }}>
-                  {order.catatan
-                    ? <Text style={styles.catatan} numberOfLines={1}>📝 {order.catatan}</Text>
-                    : <Text style={styles.noCatatan}>Tidak ada catatan</Text>
-                  }
+                <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', paddingRight: 10 }}>
+                  {order.catatan ? (
+                    <>
+                      <Ionicons name="document-text-outline" size={14} color="#F57F17" style={{ marginRight: 4 }} />
+                      <Text style={styles.catatan} numberOfLines={1}>{order.catatan}</Text>
+                    </>
+                  ) : (
+                    <Text style={styles.noCatatan}>Tidak ada catatan</Text>
+                  )}
                 </View>
                 <Text style={styles.totalText}>Rp {(order.total_harga || order.total).toLocaleString('id-ID')}</Text>
               </View>
 
               {/* ── Action Buttons ── */}
-              <View style={styles.actionRow}>
-
-                {/* MENUNGGU: 3 button sama besar */}
+              <View style={styles.actionContainer}>
+                
+                {/* 1. STATUS MENUNGGU */}
                 {activeTab === 'menunggu' && (
                   <>
-                    <TouchableOpacity style={[styles.btn, styles.btnOutlineRed]} onPress={() => handleTolak(orderId)} activeOpacity={0.8}>
-                      <Text style={styles.btnTextRed}>❌ Tolak</Text>
-                    </TouchableOpacity>
-                    {/* Oper objek data pesanan utuh ke DetailPesananScreen */}
-                    <TouchableOpacity style={[styles.btn, styles.btnOutlineGray]} onPress={() => navigation.navigate('VendorDetailPesanan', { order: order })} activeOpacity={0.8}>
-                      <Text style={styles.btnTextGray}>🔍 Detail</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={[styles.btn, styles.btnPrimary]} onPress={() => handleTerima(orderId)} activeOpacity={0.8}>
-                      <LinearGradient colors={['#1565C0', '#42A5F5']} style={styles.btnGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
-                        <Text style={styles.btnTextWhite}>✅ Terima</Text>
-                      </LinearGradient>
+                    <View style={styles.actionRow}>
+                      <TouchableOpacity style={[styles.btn, styles.btnOutlineRed]} onPress={() => handleTolak(orderId)} activeOpacity={0.8}>
+                        <Ionicons name="close-circle" size={16} color="#EF5350" style={styles.btnIcon} />
+                        <Text style={styles.btnTextRed}>Tolak Pesanan</Text>
+                      </TouchableOpacity>
+                      
+                      <TouchableOpacity style={[styles.btn, styles.btnOutlineGreen]} onPress={() => handleTerima(orderId)} activeOpacity={0.8}>
+                        <Ionicons name="checkmark-circle" size={16} color="#2E7D32" style={styles.btnIcon} />
+                        <Text style={styles.btnTextGreen}>Terima Pesanan</Text>
+                      </TouchableOpacity>
+                    </View>
+                    
+                    <TouchableOpacity style={[styles.btnFull, styles.btnOutlineBlue, { marginTop: 8 }]} onPress={() => handleChatPembeli(order)} activeOpacity={0.8}>
+                      <Ionicons name="chatbubbles" size={16} color="#1565C0" style={styles.btnIcon} />
+                      <Text style={styles.btnTextBlue}>Chat Pembeli</Text>
                     </TouchableOpacity>
                   </>
                 )}
 
-                {/* DIPROSES: 2 button sama besar */}
+                {/* 2. STATUS DIPROSES */}
                 {activeTab === 'diproses' && (
                   <>
-                    <TouchableOpacity style={[styles.btn, styles.btnOutlineYellow]} onPress={() => handleNotifCustomer(orderId)} activeOpacity={0.8}>
-                      <Text style={styles.btnTextYellow}>🔔 Notif Customer</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={[styles.btn, styles.btnPrimary]} onPress={() => handleSiap(orderId)} activeOpacity={0.8}>
-                      <LinearGradient colors={['#1565C0', '#42A5F5']} style={styles.btnGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
-                        <Text style={styles.btnTextWhite}>🍽️ Tandai Siap</Text>
-                      </LinearGradient>
+                    <View style={styles.actionRow}>
+                      <TouchableOpacity style={[styles.btn, styles.btnOutlineYellow]} onPress={() => handleNotifCustomer(orderId)} activeOpacity={0.8}>
+                        <Ionicons name="notifications" size={16} color="#F57F17" style={styles.btnIcon} />
+                        <Text style={styles.btnTextYellow}>Notif Customer</Text>
+                      </TouchableOpacity>
+                      
+                      <TouchableOpacity style={[styles.btn, styles.btnOutlineGreen]} onPress={() => handleSiap(orderId)} activeOpacity={0.8}>
+                        <Ionicons name="restaurant" size={16} color="#2E7D32" style={styles.btnIcon} />
+                        <Text style={styles.btnTextGreen}>Tandai Siap</Text>
+                      </TouchableOpacity>
+                    </View>
+
+                    <TouchableOpacity style={[styles.btnFull, styles.btnOutlineBlue, { marginTop: 8 }]} onPress={() => handleChatPembeli(order)} activeOpacity={0.8}>
+                      <Ionicons name="chatbubbles" size={16} color="#1565C0" style={styles.btnIcon} />
+                      <Text style={styles.btnTextBlue}>Chat Pembeli</Text>
                     </TouchableOpacity>
                   </>
                 )}
 
-                {/* SIAP: 1 button full width */}
+                {/* 3. STATUS SIAP (Tombol Chat & Selesai Sejajar) */}
                 {activeTab === 'siap' && (
-                  <TouchableOpacity style={[styles.btn, styles.btnPrimary, { flex: 1 }]} onPress={() => handleSelesai(orderId)} activeOpacity={0.8}>
-                    <LinearGradient colors={['#1565C0', '#42A5F5']} style={styles.btnGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
-                      <Text style={styles.btnTextWhite}>✅ Tandai Sudah Diambil</Text>
-                    </LinearGradient>
+                  <View style={styles.actionRow}>
+                    <TouchableOpacity style={[styles.btn, styles.btnOutlineBlue]} onPress={() => handleChatPembeli(order)} activeOpacity={0.8}>
+                      <Ionicons name="chatbubbles" size={16} color="#1565C0" style={styles.btnIcon} />
+                      <Text style={styles.btnTextBlue}>Chat Pembeli</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity style={[styles.btn, styles.btnOutlineGreen]} onPress={() => handleSelesai(orderId)} activeOpacity={0.8}>
+                      <Ionicons name="checkmark-done" size={18} color="#2E7D32" style={styles.btnIcon} />
+                      <Text style={styles.btnTextGreen}>Sudah Diambil</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+
+                {/* 4. STATUS SELESAI / DITOLAK */}
+                {(activeTab === 'selesai' || activeTab === 'ditolak') && (
+                  <TouchableOpacity style={[styles.btnFull, styles.btnOutlineBlue]} onPress={() => handleChatPembeli(order)} activeOpacity={0.8}>
+                    <Ionicons name="chatbubbles" size={16} color="#1565C0" style={styles.btnIcon} />
+                    <Text style={styles.btnTextBlue}>Chat Pembeli</Text>
                   </TouchableOpacity>
                 )}
 
               </View>
-            </View>
+
+            </TouchableOpacity>
             )
           })}
-          <View style={{ height: 24 }} />
         </ScrollView>
       )}
     </View>
@@ -250,64 +332,63 @@ export default function VendorPesananScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F5F7FA' },
 
-  header: { backgroundColor: '#fff', paddingTop: 60, paddingBottom: 16, paddingHorizontal: 20, borderBottomWidth: 1, borderBottomColor: '#F0F0F0' },
+  header: { backgroundColor: '#fff', paddingTop: 60, paddingBottom: 16, paddingHorizontal: 20 },
   headerTitle: { fontSize: 22, fontWeight: 'bold', color: '#1A1A1A' },
   headerSub: { fontSize: 13, color: '#888', marginTop: 2 },
 
-  tabScroll: { backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#F0F0F0', maxHeight: 60 },
-  tabContainer: { paddingHorizontal: 16, gap: 6, flexDirection: 'row', alignItems: 'center', paddingVertical: 10 },
-  tab: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 14, paddingVertical: 7, borderRadius: 100, backgroundColor: '#F5F7FA' },
-  tabActive: { backgroundColor: '#1565C0' },
-  tabEmoji: { fontSize: 13 },
-  tabLabel: { fontSize: 13, fontWeight: '600', color: '#888' },
-  tabLabelActive: { color: '#fff' },
-  tabBadge: { backgroundColor: '#E0E0E0', borderRadius: 100, minWidth: 18, height: 18, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 4 },
-  tabBadgeActive: { backgroundColor: 'rgba(255,255,255,0.3)' },
-  tabBadgeText: { fontSize: 10, fontWeight: 'bold', color: '#555' },
-  tabBadgeTextActive: { color: '#fff' },
+  topTabBar: { backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#F0F0F0' },
+  tabContainer: { paddingHorizontal: 16, paddingRight: 32 },
+  topTabButton: { paddingVertical: 14, paddingHorizontal: 12, borderBottomWidth: 2, borderBottomColor: 'transparent', marginRight: 4 },
+  tabContentRow: { flexDirection: 'row', alignItems: 'center' },
+  topTabText: { fontSize: 14, fontWeight: '600', color: '#888' },
+  
+  tabBadge: { backgroundColor: '#F0F4FF', borderRadius: 10, paddingHorizontal: 6, paddingVertical: 2, marginLeft: 6 },
+  tabBadgeText: { fontSize: 10, fontWeight: 'bold', color: '#1565C0' },
 
   emptyContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 40 },
-  emptyEmoji: { fontSize: 60, marginBottom: 16 },
+  emptyEmoji: { marginBottom: 16 },
   emptyTitle: { fontSize: 17, fontWeight: 'bold', color: '#1A1A1A', marginBottom: 8 },
   emptyDesc: { fontSize: 13, color: '#888', textAlign: 'center', lineHeight: 20 },
 
-  listContent: { padding: 16 },
+  listContent: { padding: 16, paddingBottom: 120 },
 
-  // Card
   orderCard: { backgroundColor: '#fff', borderRadius: 16, padding: 16, marginBottom: 12, elevation: 1, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 4 },
-  cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  cardTopLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  orderId: { fontSize: 13, fontWeight: 'bold', color: '#1A1A1A' },
+  cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 },
+  cardTopLeft: { alignItems: 'flex-start', gap: 4 },
+  orderId: { fontSize: 14, fontWeight: 'bold', color: '#1A1A1A' },
   orderTime: { fontSize: 12, color: '#888' },
   metodeBadge: { borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4 },
   metodeQris: { backgroundColor: '#F3E5F5' },
   metodeTransfer: { backgroundColor: '#E3F2FD' },
   metodeTunai: { backgroundColor: '#E8F5E9' },
   metodeText: { fontSize: 11, fontWeight: '700' },
+  
   divider: { height: 1, backgroundColor: '#F0F0F0', marginVertical: 10 },
   itemRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },
   itemNama: { flex: 1, fontSize: 13, color: '#1A1A1A' },
   itemQty: { fontSize: 13, color: '#888', marginRight: 10 },
   itemHarga: { fontSize: 13, fontWeight: '700', color: '#1565C0' },
+  
   cardBottom: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
   catatan: { fontSize: 12, color: '#F57F17' },
   noCatatan: { fontSize: 12, color: '#ccc' },
   totalText: { fontSize: 15, fontWeight: 'bold', color: '#1565C0' },
 
-  // ── Buttons — all equal size, same style ──
-  actionRow: { flexDirection: 'row', gap: 8, marginTop: 12 },
-  btn: { flex: 1, borderRadius: 10, overflow: 'hidden' },
+  actionContainer: { marginTop: 12 },
+  actionRow: { flexDirection: 'row', gap: 8 },
+  btn: { flex: 1, flexDirection: 'row', borderRadius: 10, paddingVertical: 12, alignItems: 'center', justifyContent: 'center' },
+  btnFull: { width: '100%', flexDirection: 'row', borderRadius: 10, paddingVertical: 12, alignItems: 'center', justifyContent: 'center' },
+  btnIcon: { marginRight: 6 },
 
-  btnOutlineRed: { backgroundColor: '#FFF3F3', borderWidth: 1, borderColor: '#EF5350', paddingVertical: 10, alignItems: 'center', justifyContent: 'center' },
-  btnTextRed: { color: '#EF5350', fontWeight: '600', fontSize: 13 },
+  btnOutlineRed: { backgroundColor: '#FFF3F3', borderWidth: 1, borderColor: '#EF5350' },
+  btnTextRed: { color: '#EF5350', fontWeight: '700', fontSize: 13 },
 
-  btnOutlineGray: { backgroundColor: '#F5F7FA', borderWidth: 1, borderColor: '#E0E0E0', paddingVertical: 10, alignItems: 'center', justifyContent: 'center' },
-  btnTextGray: { color: '#555', fontWeight: '600', fontSize: 13 },
+  btnOutlineYellow: { backgroundColor: '#FFF8E1', borderWidth: 1, borderColor: '#FFC107' },
+  btnTextYellow: { color: '#F57F17', fontWeight: '700', fontSize: 13 },
 
-  btnOutlineYellow: { backgroundColor: '#FFF8E1', borderWidth: 1, borderColor: '#FFC107', paddingVertical: 10, alignItems: 'center', justifyContent: 'center' },
-  btnTextYellow: { color: '#F57F17', fontWeight: '600', fontSize: 13 },
+  btnOutlineBlue: { backgroundColor: '#E3F2FD', borderWidth: 1, borderColor: '#1565C0' },
+  btnTextBlue: { color: '#1565C0', fontWeight: '700', fontSize: 13 },
 
-  btnPrimary: { elevation: 2, shadowColor: '#1565C0', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4 },
-  btnGradient: { paddingVertical: 10, alignItems: 'center', justifyContent: 'center' },
-  btnTextWhite: { color: '#fff', fontWeight: '700', fontSize: 13 },
+  btnOutlineGreen: { backgroundColor: '#E8F5E9', borderWidth: 1, borderColor: '#2E7D32' },
+  btnTextGreen: { color: '#2E7D32', fontWeight: '700', fontSize: 13 },
 });

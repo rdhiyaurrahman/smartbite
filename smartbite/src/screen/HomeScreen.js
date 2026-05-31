@@ -9,6 +9,9 @@ import * as SecureStore from 'expo-secure-store';
 
 import { Ionicons, FontAwesome5, FontAwesome6, MaterialCommunityIcons } from '@expo/vector-icons'; 
 
+// 🔥 Import fungsi penangkap notifikasi dari file notification.js
+import { registerForPushNotifications } from '../service/notification';
+
 const KATEGORI = [
   { id: 'nasi', label: 'Nasi', type: 'FA6', icon: 'bowl-food', size: 24 },
   { id: 'mie', label: 'Mie', type: 'MCI', icon: 'noodles', size: 28 },
@@ -20,7 +23,7 @@ const KATEGORI = [
 
 // 🔥 FUNGSI SAKTI CEK JAM OPERASIONAL
 const cekJamOperasional = (jamBuka, jamTutup) => {
-  if (!jamBuka || !jamTutup) return true; // Default buka kalau jam kosong
+  if (!jamBuka || !jamTutup) return true; 
   const now = new Date();
   const [bukjam, bukmenit] = jamBuka.split(':').map(Number);
   const [tutjam, tutmenit] = jamTutup.split(':').map(Number);
@@ -31,7 +34,6 @@ const cekJamOperasional = (jamBuka, jamTutup) => {
   if (bukaMenit <= tutupMenit) {
     return nowMenit >= bukaMenit && nowMenit < tutupMenit;
   } else {
-    // Kalau toko buka lewat tengah malam (misal 18:00 - 02:00)
     return nowMenit >= bukaMenit || nowMenit < tutupMenit;
   }
 };
@@ -57,6 +59,10 @@ export default function HomeScreen({ navigation }) {
       }
     };
     fetchUserData();
+
+    // 🔥 Panggil pendaftaran notifikasinya di sini pas masuk HomeScreen
+    registerForPushNotifications();
+    
   }, []);
 
   const fetchData = async () => {
@@ -190,7 +196,6 @@ export default function HomeScreen({ navigation }) {
             </View>
           ) : (
             tokoFiltered.map((toko) => {
-              // 🔥 LOGIKA BUKA/TUTUP SAKTI
               const isWaktuBuka = cekJamOperasional(toko.jam_buka, toko.jam_tutup);
               const isBuka = (toko.aktif !== false) && isWaktuBuka;
 
@@ -227,14 +232,12 @@ export default function HomeScreen({ navigation }) {
                     </View>
                     <Text style={styles.tokoKategori}>{toko.kategori}</Text>
                     
-                    {/* 🔥 META INFO LENGKAP (Rating & Estimasi) */}
                     <View style={styles.tokoMeta}>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                         <Ionicons name="star" size={13} color="#FFC107" />
                         <Text style={styles.tokoMetaText}>{toko.rating || 'Baru'}</Text>
                       </View>
                       
-                      {/* Titik Pemisah */}
                       <View style={styles.metaDivider} />
                       
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
@@ -249,7 +252,6 @@ export default function HomeScreen({ navigation }) {
             })
           )}
         </View>
-aya
       </ScrollView>
     </View>
   );
@@ -299,7 +301,6 @@ const styles = StyleSheet.create({
   tokoInfoTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 },
   tokoNama: { fontSize: 15, fontWeight: 'bold', color: '#1A1A1A', flex: 1, marginRight: 8 },
   
-  // 🔥 STYLE BADGE BARU
   statusBadge: { borderRadius: 10, paddingHorizontal: 10, paddingVertical: 4 },
   bukaBadge: { backgroundColor: '#E8F5E9' },
   tutupBadge: { backgroundColor: '#FFEBEE' },
@@ -307,10 +308,9 @@ const styles = StyleSheet.create({
   
   tokoKategori: { fontSize: 12, color: '#777', marginBottom: 5 },
   
-  // 🔥 STYLE META INFO BARU (Bawah Kategori)
   tokoMeta: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 2 },
   tokoMetaText: { fontSize: 12, color: '#555', fontWeight: '600' },
-  metaDivider: { width: 4, height: 4, borderRadius: 2, backgroundColor: '#CCC' }, // Titik abu-abu
+  metaDivider: { width: 4, height: 4, borderRadius: 2, backgroundColor: '#CCC' },
   
   emptyStateCard: { borderRadius: 16, padding: 30, marginHorizontal: 20, alignItems: 'center', gap: 10 },
   emptyStateText: { color: '#888', fontSize: 13, fontWeight: '500' }

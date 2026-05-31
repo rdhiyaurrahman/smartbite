@@ -32,6 +32,12 @@
     },
     "plugins": [
       "expo-secure-store"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "38e2ebc1-553c-4384-a3a8-f63d794716bb"
+      }
+    },
+    "owner": "radithyad"
   }
 }

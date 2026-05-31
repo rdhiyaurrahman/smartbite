@@ -5,6 +5,7 @@ const menuSchema = new mongoose.Schema({
   nama: { type: String, required: true },
   deskripsi: { type: String },
   harga: { type: Number, required: true },
+  stok: { type: Number, required: true, default: 0 },
   emoji: { type: String, default: '🍽️' },
   foto_url: { type: String, default: null },
   tersedia: { type: Boolean, default: true },
